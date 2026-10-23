@@ -1,0 +1,51 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #172033;
+  background: #f5f7fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.app {
+  min-height: 100vh;
+  padding: 24px 20px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 26px;
+  letter-spacing: -0.04em;
+}
+
+.app-header p {
+  margin: 8px 0 0;
+  color: #596579;
+  line-height: 1.5;
+}
+
+.empty-state {
+  margin-top: 32px;
+  padding: 24px 20px;
+  border: 1px solid #dce2ec;
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.empty-state h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.empty-state p {
+  margin: 8px 0 0;
+  color: #596579;
+  line-height: 1.5;
+}

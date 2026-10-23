@@ -5,8 +5,15 @@ export default defineManifest({
   name: "Siteward",
   description: "Save and manage your important website credentials.",
   version: "0.0.1",
+  permissions: ["sidePanel"],
   action: {
     default_title: "Open Siteward",
-    default_popup: "src/popup/index.html",
+  },
+  side_panel: {
+    default_path: "src/sidepanel/index.html",
+  },
+  background: {
+    service_worker: "src/background/index.ts",
+    type: "module",
   },
 });
