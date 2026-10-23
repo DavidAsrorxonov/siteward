@@ -3,7 +3,7 @@ export default function App() {
     <main className="app">
       <header className="app-header">
         <h1>Siteward</h1>
-        <p>Your important sites, in one place.</p>
+        <p>Your important sites, within reach.</p>
       </header>
 
       <section className="empty-state" aria-labelledby="empty-state-title">
