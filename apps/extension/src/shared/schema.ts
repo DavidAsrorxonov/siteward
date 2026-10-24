@@ -20,3 +20,22 @@ export const savedSiteSchema = z.strictObject({
 });
 
 export type SavedSite = z.infer<typeof savedSiteSchema>;
+
+const revisionSchema = z.number().int().positive();
+
+export const recordPayloadSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("site"),
+    baseRevision: revisionSchema.nullable(),
+    site: savedSiteSchema,
+  }),
+
+  z.strictObject({
+    kind: z.literal("tombstone"),
+    schemaVersion: z.literal(1),
+    baseRevision: revisionSchema,
+    deletedAt: timestampSchema,
+  }),
+]);
+
+export type RecordPayload = z.infer<typeof recordPayloadSchema>;

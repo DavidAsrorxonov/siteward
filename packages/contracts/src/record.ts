@@ -15,3 +15,17 @@ export const recordHeaderSchema = z.strictObject({
 });
 
 export type RecordHeader = z.infer<typeof recordHeaderSchema>;
+
+export const recordContextSchema = recordHeaderSchema.pick({
+  vaultId: true,
+  id: true,
+  keyVersion: true,
+});
+
+export const encryptedRecordSchema = recordHeaderSchema.extend({
+  iv: z.string().regex(/^[A-Za-z0-9+/]{16}$/),
+  ciphertext: z.base64().min(24),
+});
+
+export type RecordContext = z.infer<typeof recordContextSchema>;
+export type EncryptedRecord = z.infer<typeof encryptedRecordSchema>;
