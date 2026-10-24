@@ -19,3 +19,5 @@ export type {
 
 export { passwordKdfSchema } from "./kdf.ts";
 export type { PasswordKdf } from "./kdf.ts";
+export { vaultSetupSchema } from "./vault-setup.ts";
+export type { VaultSetup } from "./vault-setup.ts";
