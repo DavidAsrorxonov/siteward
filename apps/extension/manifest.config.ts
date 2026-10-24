@@ -5,6 +5,9 @@ export default defineManifest({
   name: "Siteward",
   description: "Save and manage your important website credentials.",
   version: "0.0.1",
+  content_security_policy: {
+    extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';",
+  },
   permissions: ["sidePanel"],
   action: {
     default_title: "Open Siteward",
