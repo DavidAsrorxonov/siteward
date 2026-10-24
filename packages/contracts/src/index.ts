@@ -16,3 +16,6 @@ export type {
   WrappedVaultKey,
   VaultKeyContext,
 } from "./vault-key.ts";
+
+export { passwordKdfSchema } from "./kdf.ts";
+export type { PasswordKdf } from "./kdf.ts";
