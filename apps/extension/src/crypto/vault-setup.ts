@@ -8,6 +8,8 @@ import { bytesToBase64 } from "./base64";
 import { derivePasswordKeys } from "./password-keys";
 import { generateVaultKey } from "./aes-gcm";
 import { unwrapVaultKey, wrapVaultKey } from "./vault-key";
+import { generateRecoveryKey } from "./recovery-key.ts";
+import { deriveRecoveryWrappingKey } from "./recovery-wrapping-key.ts";
 
 export interface UnlockedVault {
   vaultKey: CryptoKey;
@@ -16,6 +18,7 @@ export interface UnlockedVault {
 
 export interface CreatedVault extends UnlockedVault {
   setup: VaultSetup;
+  recoveryKey: string;
 }
 
 export async function createVault(
@@ -36,22 +39,51 @@ export async function createVault(
 
   try {
     const vaultKey = await generateVaultKey();
-    const wrappedVaultKey = await wrapVaultKey(keys.masterKey, vaultKey, {
+    const header = {
       wrapFormatVersion: 1,
       vaultId: crypto.randomUUID(),
       keyVersion: 1,
-    });
+    };
+
+    const context = {
+      vaultId: header.vaultId,
+      keyVersion: header.keyVersion,
+    };
+
+    const wrappedVaultKey = await wrapVaultKey(
+      keys.masterKey,
+      vaultKey,
+      header,
+    );
+
+    const recoveryKey = await generateRecoveryKey();
+
+    const recoveryWrappingKey = await deriveRecoveryWrappingKey(
+      recoveryKey,
+      context,
+    );
+
+    const recoveryWrappedVaultKey = await wrapVaultKey(
+      recoveryWrappingKey,
+      vaultKey,
+      header,
+    );
 
     const setup = vaultSetupSchema.parse({
-      setupVersion: 1,
+      setupVersion: 2,
       kdf,
       wrappedVaultKey,
+      recovery: {
+        recoveryVersion: 1,
+        wrappedVaultKey: recoveryWrappedVaultKey,
+      },
     });
 
     return {
       setup,
       vaultKey,
       authKey: keys.authKey,
+      recoveryKey,
     };
   } catch (error) {
     keys.authKey.fill(0);
@@ -88,4 +120,28 @@ export async function unlockVault(
     keys.authKey.fill(0);
     throw error;
   }
+}
+
+export async function recoverVaultKey(
+  recoveryKeyInput: unknown,
+  setupInput: unknown,
+  expectedContextInput: unknown,
+): Promise<CryptoKey> {
+  const setup = vaultSetupSchema.parse(setupInput);
+  const expected = vaultKeyContextSchema.parse(expectedContextInput);
+  const wrapped = setup.recovery.wrappedVaultKey;
+
+  if (
+    wrapped.vaultId !== expected.vaultId ||
+    wrapped.keyVersion !== expected.keyVersion
+  ) {
+    throw new Error("Vault key context mismatch.");
+  }
+
+  const wrappingKey = await deriveRecoveryWrappingKey(
+    recoveryKeyInput,
+    expected,
+  );
+
+  return unwrapVaultKey(wrappingKey, wrapped, expected);
 }
