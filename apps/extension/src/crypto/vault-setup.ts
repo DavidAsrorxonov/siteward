@@ -21,9 +21,13 @@ export interface CreatedVault extends UnlockedVault {
   recoveryKey: string;
 }
 
-export async function createVault(
+export async function protectVaultKey(
   passwordInput: unknown,
+  vaultKey: CryptoKey,
+  contextInput: unknown,
 ): Promise<CreatedVault> {
+  const context = vaultKeyContextSchema.parse(contextInput);
+
   const kdf: PasswordKdf = {
     configVersion: 1,
     algorithm: "argon2id",
@@ -38,16 +42,9 @@ export async function createVault(
   const keys = await derivePasswordKeys(passwordInput, kdf);
 
   try {
-    const vaultKey = await generateVaultKey();
     const header = {
       wrapFormatVersion: 1,
-      vaultId: crypto.randomUUID(),
-      keyVersion: 1,
-    };
-
-    const context = {
-      vaultId: header.vaultId,
-      keyVersion: header.keyVersion,
+      ...context,
     };
 
     const wrappedVaultKey = await wrapVaultKey(
@@ -89,6 +86,17 @@ export async function createVault(
     keys.authKey.fill(0);
     throw error;
   }
+}
+
+export async function createVault(
+  passwordInput: unknown,
+): Promise<CreatedVault> {
+  const vaultKey = await generateVaultKey();
+
+  return protectVaultKey(passwordInput, vaultKey, {
+    vaultId: crypto.randomUUID(),
+    keyVersion: 1,
+  });
 }
 
 export async function unlockVault(
@@ -144,4 +152,21 @@ export async function recoverVaultKey(
   );
 
   return unwrapVaultKey(wrappingKey, wrapped, expected);
+}
+
+export async function resetVaultPassword(
+  recoveryKeyInput: unknown,
+  newPasswordInput: unknown,
+  setupInput: unknown,
+  expectedContextInput: unknown,
+): Promise<CreatedVault> {
+  const expected = vaultKeyContextSchema.parse(expectedContextInput);
+
+  const vaultKey = await recoverVaultKey(
+    recoveryKeyInput,
+    setupInput,
+    expected,
+  );
+
+  return protectVaultKey(newPasswordInput, vaultKey, expected);
 }
