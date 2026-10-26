@@ -1,9 +1,10 @@
 import { VaultSetup } from "@siteward/contracts";
 import { openDB } from "idb";
 import type { DBSchema, IDBPDatabase } from "idb";
+import { PendingWrite, StoredRecord } from "./record-storage-schema";
 
 const DATABASE_NAME = "siteward";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 
 export interface StoredVault {
   vaultId: string;
@@ -15,6 +16,23 @@ export interface SitewardDatabase extends DBSchema {
   vaults: {
     key: string;
     value: StoredVault;
+  };
+
+  records: {
+    key: [string, string];
+    value: StoredRecord;
+    indexes: {
+      "by-vault": string;
+    };
+  };
+
+  pendingWrites: {
+    key: [string, string];
+    value: PendingWrite;
+    indexes: {
+      "by-vault": string;
+      "by-record": [string, string];
+    };
   };
 }
 
@@ -29,6 +47,24 @@ export async function openVaultDatabase(
         database.createObjectStore("vaults", {
           keyPath: "vaultId",
         });
+      }
+
+      if (oldVersion < 2) {
+        const records = database.createObjectStore("records", {
+          keyPath: ["envelope.vaultId", "envelope.id"],
+        });
+
+        records.createIndex("by-vault", "envelope.vaultId");
+
+        const pendingWrites = database.createObjectStore("pendingWrites", {
+          keyPath: ["envelope.vaultId", "envelope.mutationId"],
+        });
+
+        pendingWrites.createIndex("by-vault", "envelope.vaultId");
+        pendingWrites.createIndex("by-record", [
+          "envelope.vaultId",
+          "envelope.id",
+        ]);
       }
     },
   });
