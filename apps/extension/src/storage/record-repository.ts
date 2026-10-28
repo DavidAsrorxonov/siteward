@@ -1,6 +1,7 @@
 import {
   encryptedRecordSchema,
   recordContextSchema,
+  vaultKeyContextSchema,
 } from "@siteward/contracts";
 import {
   pendingWriteSchema,
@@ -77,4 +78,58 @@ export async function saveNewRecord(
     await completion.catch(() => {});
     throw error;
   }
+}
+
+export async function loadRecord(
+  database: VaultDatabase,
+  expectedContextInput: unknown,
+): Promise<StoredRecord | undefined> {
+  const expected = recordContextSchema.parse(expectedContextInput);
+
+  const storedInput: unknown = await database.get("records", [
+    expected.vaultId,
+    expected.id,
+  ]);
+
+  if (storedInput === undefined) {
+    return undefined;
+  }
+
+  const stored = storedRecordSchema.parse(storedInput);
+
+  if (
+    stored.envelope.vaultId !== expected.vaultId ||
+    stored.envelope.id !== expected.id ||
+    stored.envelope.keyVersion !== expected.keyVersion
+  ) {
+    throw new Error("Record context mismatch.");
+  }
+
+  return stored;
+}
+
+export async function listRecords(
+  database: VaultDatabase,
+  expectedVaultContextInput: unknown,
+): Promise<StoredRecord[]> {
+  const expected = vaultKeyContextSchema.parse(expectedVaultContextInput);
+
+  const storedInputs: unknown[] = await database.getAllFromIndex(
+    "records",
+    "by-vault",
+    expected.vaultId,
+  );
+
+  return storedInputs.map((input) => {
+    const stored = storedRecordSchema.parse(input);
+
+    if (
+      stored.envelope.vaultId !== expected.vaultId ||
+      stored.envelope.keyVersion !== expected.keyVersion
+    ) {
+      throw new Error("Record context mismatch.");
+    }
+
+    return stored;
+  });
 }

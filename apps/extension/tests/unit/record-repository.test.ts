@@ -14,7 +14,11 @@ import {
 import { decryptRecord, encryptRecord } from "../../src/crypto/record.ts";
 import { createVault } from "../../src/crypto/vault-setup.ts";
 import type { CreatedVault } from "../../src/crypto/vault-setup.ts";
-import { saveNewRecord } from "../../src/storage/record-repository.ts";
+import {
+  saveNewRecord,
+  loadRecord,
+  listRecords,
+} from "../../src/storage/record-repository.ts";
 import { openVaultDatabase } from "../../src/storage/vault-database.ts";
 import type { VaultDatabase } from "../../src/storage/vault-database.ts";
 import { saveNewVault } from "../../src/storage/vault-repository.ts";
@@ -82,6 +86,13 @@ describe("record repository", () => {
   async function expectEmptyRecordStores(): Promise<void> {
     expect(await database.count("records")).toBe(0);
     expect(await database.count("pendingWrites")).toBe(0);
+  }
+
+  function currentVaultContext() {
+    return {
+      vaultId: context.vaultId,
+      keyVersion: context.keyVersion,
+    };
   }
 
   it("persists the encrypted record and its pending write together", async () => {
@@ -218,5 +229,169 @@ describe("record repository", () => {
     ).rejects.toThrow("Vault key version mismatch.");
 
     await expectEmptyRecordStores();
+  });
+
+  it("returns undefined when the requested record does not exist", async () => {
+    expect(await loadRecord(database, context)).toBeUndefined();
+  });
+
+  it("loads a saved record that can be decrypted after reopening", async () => {
+    const saved = await saveNewRecord(database, envelope, context);
+
+    database.close();
+    database = await openVaultDatabase(databaseName);
+
+    const loaded = await loadRecord(database, context);
+
+    expect(loaded).toEqual(saved);
+
+    expect(
+      await decryptRecord(created.vaultKey, loaded?.envelope, context),
+    ).toEqual(payload);
+  });
+
+  it("rejects malformed revision metadata read from storage", async () => {
+    const saved = await saveNewRecord(database, envelope, context);
+
+    // Bypass the repository to simulate malformed stored data.
+    await database.put("records", {
+      ...saved,
+      localRevision: 0,
+    });
+
+    await expect(loadRecord(database, context)).rejects.toMatchObject({
+      name: "ZodError",
+    });
+  });
+
+  it("rejects a stored record with an unexpected key version", async () => {
+    const saved = await saveNewRecord(database, envelope, context);
+
+    // Keep the lookup key unchanged but alter the envelope's version.
+    await database.put("records", {
+      ...saved,
+      envelope: {
+        ...saved.envelope,
+        keyVersion: context.keyVersion + 1,
+      },
+    });
+
+    await expect(loadRecord(database, context)).rejects.toThrow(
+      "Record context mismatch.",
+    );
+  });
+
+  it("returns an empty list when the vault has no records", async () => {
+    expect(await listRecords(database, currentVaultContext())).toEqual([]);
+  });
+
+  it("lists all encrypted records belonging to the vault", async () => {
+    const first = await saveNewRecord(database, envelope, context);
+
+    const secondContext = {
+      ...context,
+      id: crypto.randomUUID(),
+    };
+
+    const secondEnvelope = await encryptRecord(
+      created.vaultKey,
+      {
+        formatVersion: 1,
+        ...secondContext,
+        mutationId: crypto.randomUUID(),
+      },
+      {
+        ...payload,
+        site: {
+          ...payload.site,
+          id: secondContext.id,
+          title: "Second account",
+        },
+      },
+    );
+
+    const second = await saveNewRecord(database, secondEnvelope, secondContext);
+
+    const records = await listRecords(database, currentVaultContext());
+
+    expect(records).toHaveLength(2);
+    expect(records).toEqual(expect.arrayContaining([first, second]));
+  });
+
+  it("keeps records from different vaults separate", async () => {
+    const ownRecord = await saveNewRecord(database, envelope, context);
+
+    const otherVault = await createVault("Other vault listing test password");
+
+    try {
+      await saveNewVault(database, otherVault.setup);
+
+      // Reuse the record ID to check separation by vault ID.
+      const otherContext = {
+        ...context,
+        vaultId: otherVault.setup.wrappedVaultKey.vaultId,
+        keyVersion: otherVault.setup.wrappedVaultKey.keyVersion,
+      };
+
+      const otherEnvelope = await encryptRecord(
+        otherVault.vaultKey,
+        {
+          formatVersion: 1,
+          ...otherContext,
+          mutationId: crypto.randomUUID(),
+        },
+        payload,
+      );
+
+      const otherRecord = await saveNewRecord(
+        database,
+        otherEnvelope,
+        otherContext,
+      );
+
+      expect(await listRecords(database, currentVaultContext())).toEqual([
+        ownRecord,
+      ]);
+
+      expect(
+        await listRecords(database, {
+          vaultId: otherContext.vaultId,
+          keyVersion: otherContext.keyVersion,
+        }),
+      ).toEqual([otherRecord]);
+    } finally {
+      otherVault.authKey.fill(0);
+    }
+  }, 30_000);
+
+  it("rejects malformed metadata in a listed record", async () => {
+    const saved = await saveNewRecord(database, envelope, context);
+
+    await database.put("records", {
+      ...saved,
+      localRevision: 0,
+    });
+
+    await expect(
+      listRecords(database, currentVaultContext()),
+    ).rejects.toMatchObject({
+      name: "ZodError",
+    });
+  });
+
+  it("rejects an unexpected key version in a listed record", async () => {
+    const saved = await saveNewRecord(database, envelope, context);
+
+    await database.put("records", {
+      ...saved,
+      envelope: {
+        ...saved.envelope,
+        keyVersion: context.keyVersion + 1,
+      },
+    });
+
+    await expect(listRecords(database, currentVaultContext())).rejects.toThrow(
+      "Record context mismatch.",
+    );
   });
 });
