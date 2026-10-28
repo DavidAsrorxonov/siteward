@@ -21,7 +21,7 @@ const storedVaultSchema = z
     path: ["setup", "wrappedVaultKey", "vaultId"],
   });
 
-function parseStoredVault(
+export function parseStoredVault(
   input: unknown,
   expectedVaultId: string,
 ): StoredVault {
