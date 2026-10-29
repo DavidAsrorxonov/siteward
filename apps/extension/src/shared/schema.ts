@@ -21,6 +21,14 @@ export const savedSiteSchema = z.strictObject({
 
 export type SavedSite = z.infer<typeof savedSiteSchema>;
 
+export type SavedSiteSummary = Pick<
+  SavedSite,
+  "id" | "title" | "urls" | "username"
+> & {
+  favorite: boolean;
+  tags: string[];
+};
+
 const revisionSchema = z.number().int().positive();
 
 export const recordPayloadSchema = z.discriminatedUnion("kind", [
