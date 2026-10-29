@@ -21,13 +21,19 @@ export const savedSiteSchema = z.strictObject({
 
 export type SavedSite = z.infer<typeof savedSiteSchema>;
 
-export type SavedSiteSummary = Pick<
-  SavedSite,
-  "id" | "title" | "urls" | "username"
-> & {
-  favorite: boolean;
-  tags: string[];
-};
+export const savedSiteSummarySchema = savedSiteSchema
+  .pick({
+    id: true,
+    title: true,
+    urls: true,
+    username: true,
+  })
+  .extend({
+    favorite: z.boolean(),
+    tags: z.array(z.string()),
+  });
+
+export type SavedSiteSummary = z.infer<typeof savedSiteSummarySchema>;
 
 const revisionSchema = z.number().int().positive();
 

@@ -4,38 +4,20 @@ import {
 } from "../shared/session-messages.ts";
 import type { SessionReply } from "../shared/session-messages.ts";
 import type { SessionController } from "./session/session-controller.ts";
+import { createSidePanelAuthorizer } from "./sender-authorization.ts";
+import type { ExtensionMessageSender } from "./sender-authorization.ts";
 
 type SessionCommands = Pick<SessionController, "getStatus" | "lock">;
-
-type Sender = Pick<
-  chrome.runtime.MessageSender,
-  "id" | "url" | "origin" | "frameId" | "documentLifecycle"
-> & {
-  tab?: unknown;
-};
 
 export function createSessionMessageHandler(
   extensionId: string,
   getController: () => Promise<SessionCommands>,
 ) {
-  const origin = `chrome-extension://${extensionId}`;
-  const sidePanelUrl = `${origin}/src/sidepanel/index.html`;
-
-  function isAllowedSender(sender: Sender): boolean {
-    return (
-      sender.id === extensionId &&
-      sender.url === sidePanelUrl &&
-      sender.origin === origin &&
-      sender.tab === undefined &&
-      (sender.frameId === undefined || sender.frameId === 0) &&
-      (sender.documentLifecycle === undefined ||
-        sender.documentLifecycle === "active")
-    );
-  }
+  const isAllowedSender = createSidePanelAuthorizer(extensionId);
 
   return async function handle(
     message: unknown,
-    sender: Sender,
+    sender: ExtensionMessageSender,
   ): Promise<SessionReply> {
     if (!isAllowedSender(sender)) {
       return {
