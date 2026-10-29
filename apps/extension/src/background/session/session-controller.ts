@@ -11,19 +11,8 @@ import { vaultKeyContextSchema } from "@siteward/contracts";
 import type { VaultKeyContext } from "@siteward/contracts";
 import { z } from "zod";
 import { base64ToBytes } from "../../crypto/base64";
-
-export type SessionStatus =
-  | {
-      status: "locked";
-      generation: number;
-    }
-  | {
-      status: "unlocked";
-      generation: number;
-      vaultId: string;
-      keyVersion: number;
-      expiresAt: number;
-    };
+import type { SessionStatus } from "../../shared/session-messages.ts";
+export type { SessionStatus } from "../../shared/session-messages.ts";
 
 const unlockDurationSchema = z
   .number()
