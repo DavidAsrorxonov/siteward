@@ -51,6 +51,49 @@ export async function saveNewVault(
   return stored;
 }
 
+export class VaultAlreadyExistsError extends Error {
+  constructor() {
+    super("A local vault already exists.");
+    this.name = "VaultAlreadyExistsError";
+  }
+}
+
+// Onboarding creates the first local vault. Check and insert atomically so
+// competing connections cannot both observe an empty database and create one.
+export async function saveFirstVault(
+  database: VaultDatabase,
+  setupInput: unknown,
+): Promise<StoredVault> {
+  const setup = vaultSetupSchema.parse(setupInput);
+  const stored = storedVaultSchema.parse({
+    vaultId: setup.wrappedVaultKey.vaultId,
+    localRevision: 1,
+    setup,
+  });
+
+  const transaction = database.transaction("vaults", "readwrite");
+  const completion = transaction.done;
+  void completion.catch(() => {});
+
+  try {
+    if ((await transaction.store.count()) !== 0) {
+      throw new VaultAlreadyExistsError();
+    }
+
+    await transaction.store.add(stored);
+    await completion;
+    return stored;
+  } catch (error) {
+    try {
+      transaction.abort();
+    } catch {
+      // The transaction may already have finished or aborted.
+    }
+    await completion.catch(() => {});
+    throw error;
+  }
+}
+
 export async function loadVault(
   database: VaultDatabase,
   vaultIdInput: unknown,

@@ -22,6 +22,8 @@ import {
   loadVault,
   replaceVaultSetup,
   saveNewVault,
+  saveFirstVault,
+  VaultAlreadyExistsError,
 } from "../../src/storage/vault-repository.ts";
 
 describe("vault repository", () => {
@@ -63,6 +65,53 @@ describe("vault repository", () => {
 
   it("returns undefined for a missing vault", async () => {
     expect(await loadVault(database, vaultId)).toBeUndefined();
+  });
+
+  it("saves the first vault with only the encrypted setup and revision", async () => {
+    const saved = await saveFirstVault(database, original.setup);
+    expect(saved).toEqual({ vaultId, localRevision: 1, setup: original.setup });
+    expect(await loadVault(database, vaultId)).toEqual(saved);
+  });
+
+  it("does not replace an existing vault through first-vault creation", async () => {
+    const existing = await saveNewVault(database, original.setup);
+    await expect(
+      saveFirstVault(database, replacement.setup),
+    ).rejects.toBeInstanceOf(VaultAlreadyExistsError);
+    expect(await loadVault(database, vaultId)).toEqual(existing);
+  });
+
+  it("allows only one first-vault creation across competing connections", async () => {
+    const secondConnection = await openVaultDatabase(databaseName);
+    const secondId = crypto.randomUUID();
+    // Structural fixture only: distinct IDs prove the guard is stronger than
+    // the object store's duplicate-primary-key constraint. No decryption here.
+    const secondSetup = {
+      ...original.setup,
+      wrappedVaultKey: { ...original.setup.wrappedVaultKey, vaultId: secondId },
+      recovery: {
+        ...original.setup.recovery,
+        wrappedVaultKey: {
+          ...original.setup.recovery.wrappedVaultKey,
+          vaultId: secondId,
+        },
+      },
+    };
+    try {
+      const results = await Promise.allSettled([
+        saveFirstVault(database, original.setup),
+        saveFirstVault(secondConnection, secondSetup),
+      ]);
+      expect(results.map((result) => result.status).sort()).toEqual([
+        "fulfilled",
+        "rejected",
+      ]);
+      const loser = results.find((result) => result.status === "rejected");
+      expect(loser?.reason).toBeInstanceOf(VaultAlreadyExistsError);
+      expect(await database.count("vaults")).toBe(1);
+    } finally {
+      secondConnection.close();
+    }
   });
 
   it("discovers only the IDs of stored vaults", async () => {

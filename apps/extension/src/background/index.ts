@@ -1,5 +1,10 @@
+import type { VaultSetup } from "@siteward/contracts";
 import { openVaultDatabase } from "../storage/vault-database.ts";
-import { listVaultIds, loadVault } from "../storage/vault-repository.ts";
+import {
+  listVaultIds,
+  loadVault,
+  saveFirstVault,
+} from "../storage/vault-repository.ts";
 import { createSessionMessageHandler } from "./session-message-handler.ts";
 import { createSessionController } from "./session/session-controller.ts";
 import { createSessionStore } from "./session/session-store.ts";
@@ -7,6 +12,8 @@ import { createVaultUnlocker } from "./session/vault-unlocker.ts";
 import { createVaultAccessMessageHandler } from "./vault-access-message-handler.ts";
 import { createVaultMessageHandler } from "./vault-message-handler.ts";
 import { createVaultReader } from "./vault-reader.ts";
+import { createVaultCreationCoordinator } from "./vault-creation-coordinator.ts";
+import { createVaultCreationMessageHandler } from "./vault-creation-message-handler.ts";
 
 // Development setting; the production timeout is still undecided.
 const DEVELOPMENT_UNLOCK_DURATION_MS = 60_000;
@@ -24,6 +31,7 @@ const vaultServicesReady = Promise.all([
   openVaultDatabase(),
 ]).then(([controller, database]) => ({
   controller,
+  database,
   reader: createVaultReader(database, controller),
   discover: () => listVaultIds(database),
   load: (vaultId: string) => loadVault(database, vaultId),
@@ -40,10 +48,27 @@ const vaultAccess = createVaultAccessMessageHandler(
   DEVELOPMENT_UNLOCK_DURATION_MS,
 );
 
+const vaultCreation = createVaultCreationCoordinator(async () => {
+  const { controller, database, discover } = await vaultServicesReady;
+  return {
+    getStatus: () => controller.getStatus(),
+    discover,
+    save: (setup: VaultSetup) => saveFirstVault(database, setup),
+  };
+});
+
+const handleVaultCreation = createVaultCreationMessageHandler(
+  chrome.runtime.id,
+  vaultCreation,
+);
+
 const handleSessionMessage = createSessionMessageHandler(
   chrome.runtime.id,
   () => controllerReady,
-  vaultAccess.cancelPendingUnlock,
+  () => {
+    vaultAccess.cancelPendingUnlock();
+    vaultCreation.cancelPendingCreation();
+  },
 );
 
 const handleVaultMessage = createVaultMessageHandler(
@@ -63,6 +88,15 @@ chrome.runtime.onMessage.addListener(
     }
 
     if (
+      "type" in message &&
+      (message.type === "vault.create.prepare" ||
+        message.type === "vault.create.confirm" ||
+        message.type === "vault.create.cancel")
+    ) {
+      void handleVaultCreation(message, sender, sendResponse).catch(() => {
+        console.warn("Could not deliver Siteward creation response.");
+      });
+    } else if (
       "type" in message &&
       (message.type === "vault.discover" || message.type === "vault.unlock")
     ) {
