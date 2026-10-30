@@ -12,7 +12,10 @@ export function createVaultUnlocker(
     setupInput: unknown,
     contextInput: unknown,
     durationInput: unknown,
+    signal?: AbortSignal,
   ): Promise<SessionStatus> {
+    signal?.throwIfAborted();
+
     const setup = vaultSetupSchema.parse(setupInput);
     const context = vaultKeyContextSchema.parse(contextInput);
 
@@ -22,19 +25,25 @@ export function createVaultUnlocker(
     let rawKey: Uint8Array<ArrayBuffer> | undefined;
 
     try {
+      signal?.throwIfAborted();
+
       keys = await derive(passwordInput, setup, context);
       keys.authKey.fill(0);
+
+      signal?.throwIfAborted();
 
       rawKey = new Uint8Array(
         await crypto.subtle.exportKey("raw", keys.vaultKey),
       );
+
+      signal?.throwIfAborted();
 
       const encodedKey = bytesToBase64(rawKey);
 
       rawKey.fill(0);
       rawKey = undefined;
 
-      return await controller.completeUnlock(ticket, encodedKey);
+      return await controller.completeUnlock(ticket, encodedKey, signal);
     } catch (error) {
       await controller.cancelUnlock(ticket);
       throw error;

@@ -18,6 +18,7 @@ import type { CreatedVault } from "../../src/crypto/vault-setup.ts";
 import { openVaultDatabase } from "../../src/storage/vault-database.ts";
 import type { VaultDatabase } from "../../src/storage/vault-database.ts";
 import {
+  listVaultIds,
   loadVault,
   replaceVaultSetup,
   saveNewVault,
@@ -62,6 +63,26 @@ describe("vault repository", () => {
 
   it("returns undefined for a missing vault", async () => {
     expect(await loadVault(database, vaultId)).toBeUndefined();
+  });
+
+  it("discovers only the IDs of stored vaults", async () => {
+    expect(await listVaultIds(database)).toEqual([]);
+
+    await saveNewVault(database, original.setup);
+
+    expect(await listVaultIds(database)).toEqual([vaultId]);
+  });
+
+  it("rejects malformed stored entries during discovery", async () => {
+    await database.put("vaults", {
+      vaultId,
+      localRevision: 0,
+      setup: original.setup,
+    });
+
+    await expect(listVaultIds(database)).rejects.toMatchObject({
+      name: "ZodError",
+    });
   });
 
   it("preserves setup after closing and reopening the connection", async () => {

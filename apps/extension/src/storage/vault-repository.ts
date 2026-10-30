@@ -123,3 +123,12 @@ export async function replaceVaultSetup(
     throw error;
   }
 }
+
+export async function listVaultIds(database: VaultDatabase): Promise<string[]> {
+  const storedVaults = await database.getAll("vaults");
+
+  return storedVaults.map((input) => {
+    const stored = storedVaultSchema.parse(input);
+    return stored.vaultId;
+  });
+}

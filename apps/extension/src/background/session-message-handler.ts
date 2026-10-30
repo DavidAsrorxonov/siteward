@@ -12,6 +12,7 @@ type SessionCommands = Pick<SessionController, "getStatus" | "lock">;
 export function createSessionMessageHandler(
   extensionId: string,
   getController: () => Promise<SessionCommands>,
+  onLockRequested: () => void = () => {},
 ) {
   const isAllowedSender = createSidePanelAuthorizer(extensionId);
 
@@ -36,6 +37,10 @@ export function createSessionMessageHandler(
     }
 
     try {
+      if (request.data.type === "session.lock") {
+        onLockRequested();
+      }
+
       const controller = await getController();
 
       const session =

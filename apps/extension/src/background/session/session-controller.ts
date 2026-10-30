@@ -244,9 +244,12 @@ export async function createSessionController(
     completeUnlock(
       ticket: symbol,
       vaultKeyBase64Input: unknown,
+      signal?: AbortSignal,
     ): Promise<SessionStatus> {
       return run(async () => {
         await checkedStatus();
+
+        signal?.throwIfAborted();
 
         const attempt = pendingUnlock;
 
@@ -292,6 +295,7 @@ export async function createSessionController(
 
         // Lock or expiration may have occurred during the storage write.
         if (
+          signal?.aborted ||
           attempt.lockIntent !== lockIntent ||
           readActiveSession(candidate, now()) === undefined
         ) {

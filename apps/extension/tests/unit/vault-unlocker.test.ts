@@ -87,6 +87,58 @@ describe("vault unlocker", () => {
     };
   }
 
+  it("rejects a cancelled request before deriving a key", async () => {
+    const cancellation = new AbortController();
+    cancellation.abort();
+
+    const derive = vi.fn(async () => makeDerivedKeys());
+    const unlock = createVaultUnlocker(controller, derive);
+
+    await expect(
+      unlock(password, created.setup, context, 60_000, cancellation.signal),
+    ).rejects.toMatchObject({ name: "AbortError" });
+
+    expect(derive).not.toHaveBeenCalled();
+    expect(await controller.getStatus()).toEqual({
+      status: "locked",
+      generation: 0,
+    });
+  });
+
+  it("clears an unlock cancelled during its session write", async () => {
+    const cancellation = new AbortController();
+
+    const localController = await createSessionController(
+      {
+        async read() {
+          return undefined;
+        },
+
+        async write(input: unknown) {
+          saved = sessionStateSchema.parse(input);
+
+          if (saved.status === "unlocked") {
+            cancellation.abort();
+          }
+        },
+      },
+      () => now,
+    );
+
+    const keys = makeDerivedKeys();
+    const unlock = createVaultUnlocker(localController, async () => keys);
+
+    await expect(
+      unlock(password, created.setup, context, 60_000, cancellation.signal),
+    ).rejects.toThrow("Unlock cancelled or expired.");
+
+    expect(keys.authKey).toEqual(new Uint8Array(32));
+    expect(saved).not.toHaveProperty("vaultKeyBase64");
+    expect(await localController.getStatus()).toMatchObject({
+      status: "locked",
+    });
+  });
+
   it("unlocks with the real password and stores the original vault key", async () => {
     const unlock = createVaultUnlocker(controller);
 
